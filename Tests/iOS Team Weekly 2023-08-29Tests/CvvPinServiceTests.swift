@@ -7,21 +7,39 @@
 
 import XCTest
 
-protocol GetProcessingSessionCodeService {
+enum GetProcessingSessionCodeDomain {}
+
+extension GetProcessingSessionCodeDomain {
     
-    func get(completion: @escaping (Result<ProcessingSessionCode, Error>) -> Void)
+    typealias Result = Swift.Result<ProcessingSessionCode, Error>
+    typealias Completion = (Result) -> Void
+    typealias Get = (@escaping Completion) -> Void
+    
+    struct ProcessingSessionCode {}
 }
 
-struct ProcessingSessionCode {}
+// ----
+
+enum ExchangeKeyDomain {}
+
+extension ExchangeKeyDomain {
+    
+    typealias Result = Swift.Result<ProcessingSessionCode, Error>
+    typealias Completion = (Result) -> Void
+
+    struct ProcessingSessionCode {}
+    
+    struct KeyExchange {}
+}
 
 protocol ExchangeKeyService {
     
-    func exchange(_ code: ExchangeKeyProcessingSessionCode, completion: @escaping (Result<KeyExchange, Error>) -> Void)
+    typealias ProcessingSessionCode = ExchangeKeyDomain.ProcessingSessionCode
+    typealias Completion = ExchangeKeyDomain.Completion
+
+    func exchange(_ code: ProcessingSessionCode, completion: @escaping Completion)
 }
 
-struct ExchangeKeyProcessingSessionCode {}
-
-struct KeyExchange {}
 
 protocol ConfirmExchangeService {
     
@@ -34,25 +52,25 @@ struct OTP {}
 
 final class CvvPinService {
     
-    private let getProcessingSessionCodeService: GetProcessingSessionCodeService
+    private let getProcessingSessionCode: GetProcessingSessionCodeDomain.Get
     private let exchangeKeyService: ExchangeKeyService
     private let confirmExchangeService: ConfirmExchangeService
     
     init(
-        getProcessingSessionCodeService: GetProcessingSessionCodeService,
+        getProcessingSessionCode: @escaping GetProcessingSessionCodeDomain.Get,
         exchangeKeyService: ExchangeKeyService,
         confirmExchangeService: ConfirmExchangeService
     ) {
-        self.getProcessingSessionCodeService = getProcessingSessionCodeService
+        self.getProcessingSessionCode = getProcessingSessionCode
         self.exchangeKeyService = exchangeKeyService
         self.confirmExchangeService = confirmExchangeService
     }
     
-    typealias ExchangeKeyCompletion = (Result<KeyExchange, Error>) -> Void
+    typealias ExchangeKeyCompletion = (Result<ExchangeKeyDomain.KeyExchange, Error>) -> Void
     
     func exchangeKey(completion: @escaping ExchangeKeyCompletion) {
         
-        getProcessingSessionCodeService.get { [unowned self] result in
+        getProcessingSessionCode { [unowned self] result in
             
             switch result {
             case let .failure(error):
@@ -66,7 +84,7 @@ final class CvvPinService {
                         completion(.failure(error))
                         
                     case let .success(keyExchange):
-                        completion(.success(keyExchange))
+//                        completion(.success(.init(keyExchange)))
                     }
                 }
             }
@@ -79,9 +97,14 @@ final class CvvPinService {
 }
 
 // adapter
-extension ExchangeKeyProcessingSessionCode {
+extension ExchangeKeyDomain.ProcessingSessionCode {
     
-    init(_ processingSessionCode: ProcessingSessionCode) {}
+    init(_ processingSessionCode: GetProcessingSessionCodeDomain.ProcessingSessionCode) {}
+}
+
+extension ConfirmKeyExchange {
+    
+    init(_ keyExchange: ExchangeKeyDomain.KeyExchange) {}
 }
 
 final class CvvPinServiceTests: XCTestCase {
@@ -89,7 +112,7 @@ final class CvvPinServiceTests: XCTestCase {
     func test() {
         
         let (sut, getProcessingSessionCodeServiceSpy, exchangeKeyServiceSpy, confirmExchangeServiceSpy) = makeSUT(confirmStub: .failure(AnyError()))
-        var results = [Result<KeyExchange, Error>]()
+        var results = [Result<ExchangeKeyDomain.KeyExchange, Error>]()
         let exp = expectation(description: "wait for completion")
         
         sut.exchangeKey {
@@ -120,7 +143,7 @@ final class CvvPinServiceTests: XCTestCase {
         let confirmExchangeServiceSpy = ConfirmExchangeServiceSpy(stub: confirmStub)
         
         let sut = CvvPinService(
-            getProcessingSessionCodeService: getProcessingSessionCodeServiceSpy,
+            getProcessingSessionCode: getProcessingSessionCodeServiceSpy.get(completion:),
             exchangeKeyService: exchangeKeyServiceSpy,
             confirmExchangeService: confirmExchangeServiceSpy
         )
@@ -132,15 +155,17 @@ final class CvvPinServiceTests: XCTestCase {
     
     private final class GetProcessingSessionCodeServiceSpy: GetProcessingSessionCodeService {
         
-        private var completions = [(Result<ProcessingSessionCode, Error>) -> Void]()
+        typealias Result = GetProcessingSessionCodeDomain.Result
         
-        func get(completion: @escaping (Result<ProcessingSessionCode, Error>) -> Void) {
+        private var completions = [(Result) -> Void]()
+        
+        func get(completion: @escaping (Result) -> Void) {
             
             completions.append(completion)
         }
         
         func complete(
-            with result: Result<ProcessingSessionCode, Error>,
+            with result: Result,
             at index: Int = 0
         ) {
             completions[index](result)
@@ -149,17 +174,19 @@ final class CvvPinServiceTests: XCTestCase {
     
     private final class ExchangeKeyServiceSpy: ExchangeKeyService {
         
-        private var messages = [(code: ExchangeKeyProcessingSessionCode, completion: (Result<KeyExchange, Error>) -> Void)]()
+        typealias Result = ExchangeKeyDomain.Result
         
-        var codes: [ExchangeKeyProcessingSessionCode] { messages.map(\.code) }
+        private var messages = [(code: ExchangeKeyDomain.ProcessingSessionCode, completion: (Result) -> Void)]()
         
-        func exchange(_ code: ExchangeKeyProcessingSessionCode, completion: @escaping (Result<KeyExchange, Error>) -> Void) {
+        var codes: [ExchangeKeyDomain.ProcessingSessionCode] { messages.map(\.code) }
+        
+        func exchange(_ code: ExchangeKeyDomain.ProcessingSessionCode, completion: @escaping (Result) -> Void) {
             
             messages.append((code, completion))
         }
         
         func complete(
-            with result: Result<KeyExchange, Error>,
+            with result: Result,
             at index: Int = 0
         ) {
             messages[index].completion(result)
