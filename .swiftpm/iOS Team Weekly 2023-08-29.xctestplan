@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "4EB2E33A-4A85-4588-B518-6C1C9DD6AF0C",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testExecutionOrdering" : "random"
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "iOS Team Weekly 2023-08-29Tests",
+        "name" : "iOS Team Weekly 2023-08-29Tests"
+      }
+    }
+  ],
+  "version" : 1
+}
