@@ -16,12 +16,19 @@ struct ProcessingSessionCode {}
 
 protocol ExchangeKeyService {
     
-    func exchange(_ code: ProcessingSessionCode, completion: @escaping (Result<KeyExchange, Error>) -> Void)
+    func exchange(_ code: ExchangeKeyProcessingSessionCode, completion: @escaping (Result<KeyExchange, Error>) -> Void)
 }
+
+struct ExchangeKeyProcessingSessionCode {}
 
 struct KeyExchange {}
 
-protocol ConfirmExchangeService {}
+protocol ConfirmExchangeService {
+    
+    func confirm(keyExchange: ConfirmKeyExchange, completion: @escaping (Result<Void, Error>) -> Void)
+}
+
+struct ConfirmKeyExchange {}
 
 struct OTP {}
 
@@ -52,7 +59,7 @@ final class CvvPinService {
                 completion(.failure(error))
                 
             case let .success(code):
-                exchangeKeyService.exchange(code) { result in
+                exchangeKeyService.exchange(.init(code)) { result in
                     
                     switch result {
                     case let .failure(error):
@@ -71,17 +78,34 @@ final class CvvPinService {
     func confirmExchange(withOTP: OTP, completion: ConfirmExchangeCompletion) {}
 }
 
+// adapter
+extension ExchangeKeyProcessingSessionCode {
+    
+    init(_ processingSessionCode: ProcessingSessionCode) {}
+}
+
 final class CvvPinServiceTests: XCTestCase {
     
     func test() {
         
-        let (sut, getProcessingSessionCodeServiceSpy, exchangeKeyServiceSpy, confirmExchangeServiceSpy) = makeSUT()
+        let (sut, getProcessingSessionCodeServiceSpy, exchangeKeyServiceSpy, confirmExchangeServiceSpy) = makeSUT(confirmStub: .failure(AnyError()))
+        var results = [Result<KeyExchange, Error>]()
+        let exp = expectation(description: "wait for completion")
         
+        sut.exchangeKey {
+            results.append($0)
+            exp.fulfill()
+        }
+        getProcessingSessionCodeServiceSpy.complete(with: .success(.init()))
+        exchangeKeyServiceSpy.complete(with: .failure(AnyError()))
+        wait(for: [exp], timeout: 1.0)
+        // assert
     }
     
     // MARK: - Helpers
     
     private func makeSUT(
+        confirmStub: Result<Void, Error>,
         file: StaticString = #file,
         line: UInt = #line
     ) -> (
@@ -93,7 +117,7 @@ final class CvvPinServiceTests: XCTestCase {
         
         let getProcessingSessionCodeServiceSpy = GetProcessingSessionCodeServiceSpy()
         let exchangeKeyServiceSpy = ExchangeKeyServiceSpy()
-        let confirmExchangeServiceSpy = ConfirmExchangeServiceSpy()
+        let confirmExchangeServiceSpy = ConfirmExchangeServiceSpy(stub: confirmStub)
         
         let sut = CvvPinService(
             getProcessingSessionCodeService: getProcessingSessionCodeServiceSpy,
@@ -125,11 +149,11 @@ final class CvvPinServiceTests: XCTestCase {
     
     private final class ExchangeKeyServiceSpy: ExchangeKeyService {
         
-        private var messages = [(code: ProcessingSessionCode, completion: (Result<KeyExchange, Error>) -> Void)]()
+        private var messages = [(code: ExchangeKeyProcessingSessionCode, completion: (Result<KeyExchange, Error>) -> Void)]()
         
-        var codes: [ProcessingSessionCode] { messages.map(\.code) }
+        var codes: [ExchangeKeyProcessingSessionCode] { messages.map(\.code) }
         
-        func exchange(_ code: ProcessingSessionCode, completion: @escaping (Result<KeyExchange, Error>) -> Void) {
+        func exchange(_ code: ExchangeKeyProcessingSessionCode, completion: @escaping (Result<KeyExchange, Error>) -> Void) {
             
             messages.append((code, completion))
         }
@@ -144,16 +168,18 @@ final class CvvPinServiceTests: XCTestCase {
     
     private final class ConfirmExchangeServiceSpy: ConfirmExchangeService {
         
-//        private let stub: Result<Void, Error>
-//
-//        init(stub: Result<Void, Error>) {
-//
-//            self.stub = stub
-//        }
-//
-//        func confirm(completion: @escaping (Result<Void, Error>) -> Void) {
-//
-//            completion(stub)
-//        }
+        private let stub: Result<Void, Error>
+
+        init(stub: Result<Void, Error>) {
+
+            self.stub = stub
+        }
+
+        func confirm(keyExchange: ConfirmKeyExchange, completion: @escaping (Result<Void, Error>) -> Void) {
+
+            completion(stub)
+        }
     }
 }
+
+private struct AnyError: Error {}
