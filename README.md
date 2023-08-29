@@ -1,3 +1,3 @@
-# iOS Team Weekly 2023-08-29
+# Domain namespaces as a way to describe interfaces
 
-A description of this package.
+## iOS Team Weekly 2023-08-29
